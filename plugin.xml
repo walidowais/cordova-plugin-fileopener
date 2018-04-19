@@ -19,6 +19,21 @@
         <config-file parent="/*" target="AndroidManifest.xml">
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
         </config-file>
+        <config-file target="AndroidManifest.xml" parent="/manifest/application">
+          <provider
+            android:name="android.support.v4.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+              android:name="android.support.FILE_PROVIDER_PATHS"
+              android:resource="@xml/provider_paths"/>
+          </provider>
+        </config-file>
+
+        <framework src="com.android.support:support-v4:+" />
+
         <source-file src="src/android/FileOpener.java" target-dir="src/fr/smile/cordova/fileopener"/>
+        <source-file src="src/android/provider_paths.xml" target-dir="res/xml" />
     </platform>
 </plugin>

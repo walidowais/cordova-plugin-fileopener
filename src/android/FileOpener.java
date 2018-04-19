@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.lang.String;
 import java.net.URLDecoder;
-import java.util.HashMap;
+import java.util.ArrayList;
 
 import android.annotation.TargetApi;
 import org.apache.cordova.CordovaPlugin;
@@ -26,73 +26,74 @@ import android.content.IntentFilter;
 import android.database.Cursor;
 
 import android.content.ActivityNotFoundException;
+import android.support.v4.content.FileProvider;
 import android.util.Log;
+import android.webkit.CookieManager;
 
 @TargetApi(9)
 public class FileOpener extends CordovaPlugin {
     private static final String FILE_OPENER = "FileOpener";
-    private static final HashMap<String, String> MIME_TYPES;
+    private static final ArrayList<String> SUPPORTED_MIME_TYPES;
 
     static {
-        MIME_TYPES = new HashMap<String, String>();
-        MIME_TYPES.put(".djvu", "image/x.djvu");
-        MIME_TYPES.put(".pdf", "application/pdf");
-        MIME_TYPES.put(".doc", "application/msword");
-        MIME_TYPES.put(".docx", "application/msword");
-        MIME_TYPES.put(".xls", "application/vnd.ms-powerpoint");
-        MIME_TYPES.put(".xlsx", "application/vnd.ms-powerpoint");
-        MIME_TYPES.put(".rtf", "application/vnd.ms-excel");
-        MIME_TYPES.put(".wav", "audio/x-wav");
-        MIME_TYPES.put(".mp3", "audio/mpeg3");
-        MIME_TYPES.put(".gif", "image/gif");
-        MIME_TYPES.put(".jpg", "image/jpeg");
-        MIME_TYPES.put(".jpeg", "image/jpeg");
-        MIME_TYPES.put(".png", "image/png");
-        MIME_TYPES.put(".txt", "text/plain");
-        MIME_TYPES.put(".tiff", "image/tiff");
-        MIME_TYPES.put(".tif", "image/tiff");
-        MIME_TYPES.put(".mpg", "video/*");
-        MIME_TYPES.put(".mpeg", "video/*");
-        MIME_TYPES.put(".mpe", "video/*");
-        MIME_TYPES.put(".mp4", "video/*");
-        MIME_TYPES.put(".avi", "video/*");
-        MIME_TYPES.put(".flv", "video/*");
-        MIME_TYPES.put(".ods", "application/vnd.oasis.opendocument.spreadsheet");
-        MIME_TYPES.put(".odt", "application/vnd.oasis.opendocument.text");
-        MIME_TYPES.put(".ppt", "application/vnd.ms-powerpoint");
-        MIME_TYPES.put(".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-        MIME_TYPES.put(".apk", "application/vnd.android.package-archive");
-        MIME_TYPES.put(".swf", "application/x-shockwave-flash");
-        MIME_TYPES.put(".zip", "application/zip");
-        MIME_TYPES.put(".rar", "application/x-rar-compressed");
+        SUPPORTED_MIME_TYPES = new ArrayList<String>();
+        SUPPORTED_MIME_TYPES.add("image/x.djvu");
+        SUPPORTED_MIME_TYPES.add("application/pdf");
+        SUPPORTED_MIME_TYPES.add("application/msword");
+        SUPPORTED_MIME_TYPES.add("application/msword");
+        SUPPORTED_MIME_TYPES.add("application/vnd.ms-powerpoint");
+        SUPPORTED_MIME_TYPES.add("application/vnd.ms-powerpoint");
+        SUPPORTED_MIME_TYPES.add("application/vnd.ms-excel");
+        SUPPORTED_MIME_TYPES.add("audio/x-wav");
+        SUPPORTED_MIME_TYPES.add("audio/mpeg3");
+        SUPPORTED_MIME_TYPES.add("image/gif");
+        SUPPORTED_MIME_TYPES.add("image/jpeg");
+        SUPPORTED_MIME_TYPES.add("image/jpeg");
+        SUPPORTED_MIME_TYPES.add("image/png");
+        SUPPORTED_MIME_TYPES.add("text/plain");
+        SUPPORTED_MIME_TYPES.add("image/tiff");
+        SUPPORTED_MIME_TYPES.add("image/tiff");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("video/*");
+        SUPPORTED_MIME_TYPES.add("application/vnd.oasis.opendocument.spreadsheet");
+        SUPPORTED_MIME_TYPES.add("application/vnd.oasis.opendocument.text");
+        SUPPORTED_MIME_TYPES.add("application/vnd.ms-powerpoint");
+        SUPPORTED_MIME_TYPES.add("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+        SUPPORTED_MIME_TYPES.add("application/vnd.android.package-archive");
+        SUPPORTED_MIME_TYPES.add("application/x-shockwave-flash");
+        SUPPORTED_MIME_TYPES.add("application/zip");
+        SUPPORTED_MIME_TYPES.add("application/x-rar-compressed");
     }
 
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
         Context context = cordova.getActivity().getApplicationContext();
 
-        String extension = getExtension(args, callbackContext);
+        String mimeType = getMimeType(args, callbackContext);
 
         if ("canOpenFile".equals(action)) {
-            if (extension != null) {
+            if (mimeType != null) {
                 JSONObject obj = new JSONObject();
-                obj.put("extension", extension);
-                obj.put("canBeOpen", this.canOpenFile(extension, context));
+                obj.put("mimeType", mimeType);
+                obj.put("canBeOpen", this.canOpenFile(mimeType, context));
                 callbackContext.success(obj);
             }
             return true;
         } else if ("openFile".equals(action)) {
-            if (extension != null) {
+            if (mimeType != null) {
                 String fileURL = args.getString(0);
                 if (fileURL.startsWith("file://")) {
                     // Local file uri (case of an already downloaded file)
                     Log.d(FILE_OPENER, "Opening file from local URI as it begins with file://");
                     File file = new File(fileURL.replaceFirst("^file:\\/\\/", ""));
-                    Uri uri = Uri.fromFile(file);
-                    Log.d(FILE_OPENER, "Local path: " + uri);
-                    this.openFile(uri, extension, context, callbackContext);
+                    Log.d(FILE_OPENER, "Local path: " + fileURL);
+                    this.openFile(file, mimeType, context, callbackContext);
                 } else {
                     try {
-                        this.downloadAndOpenFile(context, fileURL, callbackContext);
+                        this.downloadAndOpenFile(context, fileURL, mimeType, callbackContext);
                     } catch (UnsupportedEncodingException e) {
                         throw new RuntimeException(e);
                     }
@@ -104,21 +105,15 @@ public class FileOpener extends CordovaPlugin {
         }
     }
 
-    private String getExtension(final JSONArray args, CallbackContext callbackContext) throws JSONException {
+    private String getMimeType(final JSONArray args, CallbackContext callbackContext) throws JSONException {
         JSONObject obj = new JSONObject();
         if (args.length() > 0) {
             String url = args.getString(0);
-            if (url.lastIndexOf(".") > -1) {
-                String extension = url.substring(url.lastIndexOf("."));
-                if (hasMimeType(extension)) {
-                    return extension;
-                } else {
-                    obj.put("message", "This extension: " + extension + " is not supported by the FileOpener plugin");
-                    callbackContext.error(obj);
-                    return null;
-                }
+            String mimeType = args.getString(1);
+            if (supportsMimeType(mimeType)) {
+                return mimeType;
             } else {
-                obj.put("message", "This file :" + url + " has no extension");
+                obj.put("message", "This mime type: " + mimeType + " is not supported by the FileOpener plugin");
                 callbackContext.error(obj);
                 return null;
             }
@@ -129,26 +124,29 @@ public class FileOpener extends CordovaPlugin {
         }
     }
 
-    private boolean hasMimeType(String extension) {
-        return MIME_TYPES.containsKey(extension);
+    private boolean supportsMimeType(String mimeType) {
+        return SUPPORTED_MIME_TYPES.contains(mimeType);
     }
 
-    private String getMimeType(String extension) {
-        return MIME_TYPES.get(extension);
-    }
-
-    private boolean canOpenFile(String extension, Context context) {
+    private boolean canOpenFile(String mimeType, Context context) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        final File tempFile = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "test" + extension);
-        intent.setDataAndType(Uri.fromFile(tempFile), getMimeType(extension));
+        final File tempFile = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "test" + mimeType);
+        intent.setDataAndType(Uri.fromFile(tempFile), mimeType);
         return context.getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY).size() > 0;
     }
 
-    private void openFile(Uri localUri, String extension, Context context, CallbackContext callbackContext) throws JSONException {
+    private void openFile(File file, String mimeType, Context context, CallbackContext callbackContext) throws JSONException {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        intent.setDataAndType(localUri, getMimeType(extension));
+
+        Uri apkURI = FileProvider.getUriForFile(
+                                 context,
+                                 context.getApplicationContext()
+                                 .getPackageName() + ".provider", file);
+        intent.setDataAndType(apkURI, mimeType);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
         JSONObject obj = new JSONObject();
 
         try {
@@ -162,14 +160,13 @@ public class FileOpener extends CordovaPlugin {
         }
     }
 
-    private void downloadAndOpenFile(final Context context, final String fileUrl, final CallbackContext callbackContext) throws UnsupportedEncodingException {
+    private void downloadAndOpenFile(final Context context, final String fileUrl, final String mimeType, final CallbackContext callbackContext) throws UnsupportedEncodingException {
         final String filename = URLDecoder.decode(fileUrl.substring(fileUrl.lastIndexOf("/") + 1), "UTF-8");
-        final String extension = fileUrl.substring(fileUrl.lastIndexOf("."));
         final File tempFile = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), filename);
 
         if (tempFile.exists()) {
             try {
-                openFile(Uri.fromFile(tempFile), extension, context, callbackContext);
+                openFile(tempFile, mimeType, context, callbackContext);
             } catch (JSONException e) {
                 Log.d(FILE_OPENER, "downloadAndOpenFile", e);
             }
@@ -191,7 +188,7 @@ public class FileOpener extends CordovaPlugin {
                     int status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS));
                     if (status == DownloadManager.STATUS_SUCCESSFUL) {
                         try {
-                            openFile(Uri.fromFile(tempFile), extension, context, callbackContext);
+                            openFile(tempFile, mimeType, context, callbackContext);
                         } catch (JSONException e) {
                             Log.d(FILE_OPENER, "downloadAndOpenFile", e);
                         }
@@ -203,6 +200,10 @@ public class FileOpener extends CordovaPlugin {
             }
         };
         context.registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+
+        CookieManager cookieManager = CookieManager.getInstance();
+        String cookieForUrl = cookieManager.getCookie(fileUrl);
+        request.addRequestHeader("Cookie", cookieForUrl);
 
         downloadManager.enqueue(request);
     }
